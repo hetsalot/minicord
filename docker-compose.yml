@@ -1,0 +1,187 @@
+version: '3.8'
+
+networks:
+  minicord-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+services:
+  # --- PostgreSQL Primary Database ---
+  minicord-db-primary:
+    image: postgres:15-alpine
+    container_name: minicord-db-primary
+    environment:
+      POSTGRES_DB: ${DB_NAME:-minicord}
+      POSTGRES_USER: ${DB_USER:-minicord}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-minicord123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - pgdata_primary:/var/lib/postgresql/data
+    networks:
+      minicord-net:
+        ipv4_address: 172.20.0.40
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U minicord"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- PostgreSQL Read Replica ---
+  minicord-db-replica:
+    image: postgres:15-alpine
+    container_name: minicord-db-replica
+    environment:
+      POSTGRES_DB: ${DB_NAME:-minicord}
+      POSTGRES_USER: ${DB_USER:-minicord}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-minicord123}
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - pgdata_replica:/var/lib/postgresql/data
+    networks:
+      minicord-net:
+        ipv4_address: 172.20.0.41
+    depends_on:
+      minicord-db-primary:
+        condition: service_healthy
+
+  # --- Java RMI Registry Service ---
+  minicord-rmi-registry:
+    build:
+      context: ./rmi-registry
+      dockerfile: Dockerfile
+    container_name: minicord-rmi-registry
+    ports:
+      - "1099:1099"
+    networks:
+      minicord-net:
+        ipv4_address: 172.20.0.30
+
+  # --- Backend Node 1 ---
+  minicord-server-1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: minicord-server-1
+    environment:
+      SERVER_ID: 1
+      SERVER_PORT: 9001
+      TOTAL_NODES: 3
+      DB_HOST: minicord-db-primary
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-minicord}
+      DB_USER: ${DB_USER:-minicord}
+      DB_PASSWORD: ${DB_PASSWORD:-minicord123}
+      RMI_REGISTRY_HOST: minicord-rmi-registry
+      RMI_REGISTRY_PORT: 1099
+      CONSISTENCY_MODE: EVENTUAL
+      ELECTION_ALGORITHM: BULLY
+      JWT_SECRET: minicord-super-secret-key-for-jwt-tokens-2026-min-32-chars-long!
+    ports:
+      - "9001:9001"
+    depends_on:
+      - minicord-db-primary
+      - minicord-rmi-registry
+    networks:
+      minicord-net:
+        ipv4_address: 172.20.0.21
+
+  # --- Backend Node 2 ---
+  minicord-server-2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: minicord-server-2
+    environment:
+      SERVER_ID: 2
+      SERVER_PORT: 9002
+      TOTAL_NODES: 3
+      DB_HOST: minicord-db-primary
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-minicord}
+      DB_USER: ${DB_USER:-minicord}
+      DB_PASSWORD: ${DB_PASSWORD:-minicord123}
+      RMI_REGISTRY_HOST: minicord-rmi-registry
+      RMI_REGISTRY_PORT: 1099
+      CONSISTENCY_MODE: EVENTUAL
+      ELECTION_ALGORITHM: BULLY
+      JWT_SECRET: minicord-super-secret-key-for-jwt-tokens-2026-min-32-chars-long!
+    ports:
+      - "9002:9002"
+    depends_on:
+      - minicord-db-primary
+      - minicord-rmi-registry
+    networks:
+      minicord-net:
+        ipv4_address: 172.20.0.22
+
+  # --- Backend Node 3 ---
+  minicord-server-3:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: minicord-server-3
+    environment:
+      SERVER_ID: 3
+      SERVER_PORT: 9003
+      TOTAL_NODES: 3
+      DB_HOST: minicord-db-primary
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-minicord}
+      DB_USER: ${DB_USER:-minicord}
+      DB_PASSWORD: ${DB_PASSWORD:-minicord123}
+      RMI_REGISTRY_HOST: minicord-rmi-registry
+      RMI_REGISTRY_PORT: 1099
+      CONSISTENCY_MODE: EVENTUAL
+      ELECTION_ALGORITHM: BULLY
+      JWT_SECRET: minicord-super-secret-key-for-jwt-tokens-2026-min-32-chars-long!
+    ports:
+      - "9003:9003"
+    depends_on:
+      - minicord-db-primary
+      - minicord-rmi-registry
+    networks:
+      minicord-net:
+        ipv4_address: 172.20.0.23
+
+  # --- Load Balancer ---
+  minicord-lb:
+    build:
+      context: ./loadbalancer
+      dockerfile: Dockerfile
+    container_name: minicord-lb
+    environment:
+      LB_PORT: 8080
+      BACKENDS: "1=minicord-server-1:9001:3,2=minicord-server-2:9002:2,3=minicord-server-3:9003:1"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - minicord-server-1
+      - minicord-server-2
+      - minicord-server-3
+    networks:
+      minicord-net:
+        ipv4_address: 172.20.0.11
+
+  # --- React Frontend ---
+  minicord-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: minicord-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - minicord-lb
+    networks:
+      minicord-net:
+        ipv4_address: 172.20.0.10
+
+volumes:
+  pgdata_primary:
+  pgdata_replica:

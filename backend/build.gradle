@@ -1,0 +1,52 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.2.5'
+    id 'io.spring.dependency-management' version '1.1.4'
+}
+
+group = 'com.minicord'
+version = '1.0.0'
+sourceCompatibility = '17'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Spring Boot
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    
+    // PostgreSQL
+    implementation 'org.postgresql:postgresql:42.7.3'
+    
+    // HikariCP (connection pool - included via spring-boot-starter-jdbc)
+    
+    // JSON
+    implementation 'com.google.code.gson:gson:2.10.1'
+    
+    // JWT
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.5'
+    
+    // BCrypt for password hashing
+    implementation 'org.mindrot:jbcrypt:0.4'
+    
+    // Lombok (optional - reduces boilerplate)
+    compileOnly 'org.projectlombok:lombok:1.18.32'
+    annotationProcessor 'org.projectlombok:lombok:1.18.32'
+    
+    // Testing
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// Make JAR executable
+bootJar {
+    archiveFileName = 'minicord-server.jar'
+}
